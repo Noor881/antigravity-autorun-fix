@@ -141,7 +141,8 @@ function analyzeFile(content, label) {
     console.log(`     callback=${callbackAlias}, enum=${enumAlias}, confirm=${confirmFn}`);
 
     // Find policy variable: VARNAME=HANDLER?.terminalAutoExecutionPolicy??ENUM.OFF
-    const policyRe = new RegExp(`(\\w+)=\\w+\\.terminalAutoExecutionPolicy\\?\\?${enumAlias}\\.OFF`);
+    // Handles both optional chaining (obj?.) and regular dot access (obj.)
+    const policyRe = new RegExp(`(\\w+)=\\w+\\??[.]terminalAutoExecutionPolicy\\?\\?${enumAlias}\\.OFF`);
     const policyMatch = content.substring(Math.max(0, matchIndex - 2000), matchIndex).match(policyRe);
 
     if (!policyMatch) {
@@ -151,8 +152,8 @@ function analyzeFile(content, label) {
     const policyVar = policyMatch[1];
     console.log(`     policyVar=${policyVar}`);
 
-    // Find secureMode variable
-    const secureRe = /(\w+)=\w+\?\.secureModeEnabled\?\?!1/;
+    // Find secureMode variable — handles both obj?.secureModeEnabled and obj.secureModeEnabled
+    const secureRe = /(\w+)=\w+\??[.]secureModeEnabled\?\?!1/;
     const secureMatch = content.substring(Math.max(0, matchIndex - 2000), matchIndex).match(secureRe);
 
     if (!secureMatch) {
