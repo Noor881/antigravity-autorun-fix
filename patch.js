@@ -125,25 +125,40 @@ function findAntigravityPath() {
 // ─── Smart Pattern Matching ──────────────────────────────────────────────────
 
 function analyzeFile(content, label) {
-    // Find the onChange handler that contains setTerminalAutoExecutionPolicy + .EAGER
-    const onChangeRe = /(\w+)=(\w+)\((\w+)=>\{\w+\?\.setTerminalAutoExecutionPolicy\?\.\(\3\),\3===(\w+)\.EAGER&&(\w+)\(!0\)\},\[[\w,]*\]\)/;
-    const onChangeMatch = content.match(onChangeRe);
+    let fullMatch, assignVar, callbackAlias, argName, enumAlias, confirmFn, matchIndex;
 
-    if (!onChangeMatch) {
+    // Strategy 1 (legacy ≤ IDE 1.21.x):
+    //   VAR=CALLBACK(ARG=>{handler?.setTerminalAutoExecutionPolicy?.(ARG),ARG===ENUM.EAGER&&confirm(!0)},[...])
+    const onChangeReV1 = /(\w+)=(\w+)\((\w+)=>\{\w+\?\.setTerminalAutoExecutionPolicy\?\.\(\3\),\3===(\w+)\.EAGER&&(\w+)\(!0\)\},\[[\w,]*\]\)/;
+    const matchV1 = content.match(onChangeReV1);
+
+    // Strategy 2 (IDE 1.23.x+):
+    //   VAR=CALLBACK(ARG=>{if(ARG!==ENUM.EAGER||...){handler?.setTerminalAutoExecutionPolicy?.(ARG),ARG===ENUM.EAGER&&confirm(!0);return}...},[...])
+    const onChangeReV2 = /(\w+)=(\w+)\((\w+)=>\{if\(\3!==(\w+)\.EAGER[^)]*\)\{\w+\?\.setTerminalAutoExecutionPolicy\?\.\(\3\),\3===\4\.EAGER&&(\w+)\(!0\);return\}/;
+    const matchV2 = content.match(onChangeReV2);
+
+    if (matchV1) {
+        [fullMatch, assignVar, callbackAlias, argName, enumAlias, confirmFn] = matchV1;
+        matchIndex = content.indexOf(fullMatch);
+        console.log(`  📋 [${label}] Found onChange (v1 pattern) at offset ${matchIndex}`);
+    } else if (matchV2) {
+        [fullMatch, assignVar, callbackAlias, argName, enumAlias, confirmFn] = matchV2;
+        matchIndex = content.indexOf(fullMatch);
+        console.log(`  📋 [${label}] Found onChange (v2 pattern) at offset ${matchIndex}`);
+    } else {
         console.log(`  ❌ [${label}] Could not find onChange handler pattern`);
         return null;
     }
 
-    const [fullMatch, assignVar, callbackAlias, argName, enumAlias, confirmFn] = onChangeMatch;
-    const matchIndex = content.indexOf(fullMatch);
-
-    console.log(`  📋 [${label}] Found onChange at offset ${matchIndex}`);
     console.log(`     callback=${callbackAlias}, enum=${enumAlias}, confirm=${confirmFn}`);
 
-    // Find policy variable: VARNAME=HANDLER?.terminalAutoExecutionPolicy??ENUM.OFF
-    // Handles both optional chaining (obj?.) and regular dot access (obj.)
-    const policyRe = new RegExp(`(\\w+)=\\w+\\??[.]terminalAutoExecutionPolicy\\?\\?${enumAlias}\\.OFF`);
-    const policyMatch = content.substring(Math.max(0, matchIndex - 2000), matchIndex).match(policyRe);
+    // Find policy variable — two patterns:
+    //   v1: VARNAME=HANDLER?.terminalAutoExecutionPolicy??ENUM.OFF
+    //   v2: VARNAME=BOOL&&HANDLER?.terminalAutoExecutionPolicy||ENUM.OFF
+    const policyReV1 = new RegExp(`(\\w+)=\\w+\\??[.]terminalAutoExecutionPolicy\\?\\?${enumAlias}\\.OFF`);
+    const policyReV2 = new RegExp(`(\\w+)=\\w+&&\\w+\\?\\.terminalAutoExecutionPolicy\\|\\|${enumAlias}\\.OFF`);
+    const searchBefore = content.substring(Math.max(0, matchIndex - 2000), matchIndex);
+    const policyMatch = searchBefore.match(policyReV1) || searchBefore.match(policyReV2);
 
     if (!policyMatch) {
         console.log(`  ❌ [${label}] Could not find policy variable`);
@@ -154,7 +169,7 @@ function analyzeFile(content, label) {
 
     // Find secureMode variable — handles both obj?.secureModeEnabled and obj.secureModeEnabled
     const secureRe = /(\w+)=\w+\??[.]secureModeEnabled\?\?!1/;
-    const secureMatch = content.substring(Math.max(0, matchIndex - 2000), matchIndex).match(secureRe);
+    const secureMatch = searchBefore.match(secureRe);
 
     if (!secureMatch) {
         console.log(`  ❌ [${label}] Could not find secureMode variable`);
@@ -163,7 +178,8 @@ function analyzeFile(content, label) {
     const secureVar = secureMatch[1];
     console.log(`     secureVar=${secureVar}`);
 
-    // Find useEffect alias
+    // Find useEffect alias — look for the nearby function that calls useEffect with cleanup
+    // e.g. the checkCloudtop function right above uses: return ALIAS(()=>{...return ()=>{...}},[...])
     const nearbyCode = content.substring(Math.max(0, matchIndex - 5000), matchIndex + 5000);
     const effectCandidates = {};
     const effectRe = /\b(\w{2,3})\(\(\)=>\{[^}]{3,80}\},\[/g;
