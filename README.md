@@ -5,7 +5,7 @@
 **Fixes the "Always Proceed" terminal policy in [Antigravity IDE](https://antigravity.dev) — so it actually auto-runs commands.**
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
-[![Antigravity](https://img.shields.io/badge/Antigravity-v1.107.0+-blue.svg)](https://antigravity.dev)
+[![Antigravity](https://img.shields.io/badge/Antigravity-v1.107.0+%20(IDE%201.21.9–1.23.x)-blue.svg)](https://antigravity.dev)
 [![Works on](https://img.shields.io/badge/Platform-Windows%20%7C%20macOS%20%7C%20Linux-lightgrey)]()
 [![Node.js](https://img.shields.io/badge/Node.js-Any%20Modern%20Version-green)](https://nodejs.org)
 
@@ -67,7 +67,7 @@ You need **two things** installed on your computer:
 
 ### 1. Antigravity IDE
 - Download from [antigravity.dev](https://antigravity.dev)
-- Version 1.107.0 or newer (other versions likely work too)
+- Version 1.107.0 or newer — tested on IDE 1.21.9 through 1.23.2
 
 ### 2. Node.js
 - Download from [nodejs.org](https://nodejs.org)
@@ -123,16 +123,18 @@ You should see output like this:
 ╚══════════════════════════════════════════════════╝
 
 📍 C:\Users\YourName\AppData\Local\Programs\Antigravity
-📦 Version: 1.107.0 (IDE 1.21.9)
+📦 Version: 1.107.0 (IDE 1.23.2)
 
-  📋 [workbench] Found onChange at offset 12460103
-     callback=tt, enum=YD, confirm=E
-     policyVar=d, secureVar=h
-     useEffect=pi (confidence: 70 hits)
+  📋 [workbench] Found onChange (v2 pattern) at offset 12770908
+     callback=et, enum=Qx, confirm=L
+     policyVar=C, secureVar=A
+     useEffect=ai (confidence: 78 hits)
   ✅ [workbench] Patched (+42 bytes)
 
-  📋 [jetskiAgent] Found onChange at offset 8510660
-     [similar output...]
+  📋 [jetskiAgent] Found onChange (v2 pattern) at offset 8693613
+     callback=Ee, enum=Th, confirm=_
+     policyVar=V, secureVar=x
+     useEffect=dt (confidence: 88 hits)
   ✅ [jetskiAgent] Patched (+42 bytes)
 
 ✨ Done! Restart Antigravity.
@@ -292,7 +294,14 @@ useEffect(() => {
 }, [])
 ```
 
-Because Antigravity's source is **minified** (variable names are scrambled), this script uses **regex pattern matching** to find the correct code structure regardless of what the variables are named. This makes it work across versions.
+Because Antigravity's source is **minified** (variable names are scrambled), this script uses **regex pattern matching** to find the correct code structure regardless of what the variables are named. The patcher ships with **two matching strategies** to handle different IDE versions:
+
+| Strategy | IDE Version | onChange Pattern |
+|----------|-------------|------------------|
+| **v1** (legacy) | ≤ 1.21.x | Simple callback: `handler?.setTerminalAutoExecutionPolicy?.(arg), arg===ENUM.EAGER && confirm(!0)` |
+| **v2** | 1.23.x+ | Conditional branch with Cider/rendererRpc check: `if(arg!==ENUM.EAGER\|\|...){handler?.setTerminalAutoExecutionPolicy?.(arg),...;return}` |
+
+The script tries v1 first, then falls back to v2 — so it works across all supported versions automatically.
 
 ### Files patched
 
@@ -320,7 +329,7 @@ No. Just install Node.js, download this repo, and run one command.
 The patch gets overwritten. Re-run `node patch.js` after any Antigravity update.
 
 **Q: Does this work on older Antigravity versions?**
-It's tested on v1.107.0 (IDE 1.21.9+). Older versions likely work too since the pattern matching is flexible.
+It's tested on v1.107.0 (IDE 1.21.9 through 1.23.2). Older versions likely work too since the pattern matching is flexible. The patcher uses two regex strategies to cover both legacy and modern code patterns.
 
 **Q: Can I use this fix in a script to automate patching after updates?**
 Absolutely. `node patch.js` is fully non-interactive and exits with code `0` on success.
@@ -334,6 +343,8 @@ Absolutely. `node patch.js` is fully non-interactive and exits with code `0` on 
 > Full credit to Kanezal for finding the root cause and writing the core patcher logic.
 >
 > Regex fix for Antigravity IDE v1.21.9+ (optional chaining support) by **[Noor](https://github.com/Noor881)**.
+>
+> v2 pattern support for IDE 1.23.x+ (conditional Cider/rendererRpc onChange handler) by **[Noor](https://github.com/Noor881)**.
 
 ---
 
